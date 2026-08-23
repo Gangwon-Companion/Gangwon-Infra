@@ -1,0 +1,7 @@
+aws_region        = "ap-northeast-2"
+project_name      = "gangwon-companion"
+environment       = "prod"
+be_image_tag      = "latest"
+ai_image_tag      = "latest"
+ecs_desired_count = 0
+
