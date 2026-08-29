@@ -1,5 +1,5 @@
 resource "aws_s3_bucket" "community" {
-  bucket = "${local.name}-community-${data.aws_caller_identity.current.account_id}"
+  bucket = "${local.name}-community-${var.aws_account_id}"
 }
 
 resource "aws_s3_bucket_public_access_block" "community" {
@@ -28,9 +28,10 @@ resource "aws_s3_bucket_lifecycle_configuration" "community" {
     id     = "abort-incomplete-multipart-uploads"
     status = "Enabled"
 
+    filter {}
+
     abort_incomplete_multipart_upload {
       days_after_initiation = 7
     }
   }
 }
-

@@ -1,6 +1,6 @@
 output "alb_url" {
-  description = "Initial HTTP API URL. Add ACM and HTTPS before public production use."
-  value       = "http://${aws_lb.main.dns_name}"
+  description = "Application load balancer API URL."
+  value       = "${var.acm_certificate_arn == "" ? "http" : "https"}://${aws_lb.main.dns_name}"
 }
 
 output "be_ecr_repository_url" {
@@ -21,5 +21,17 @@ output "application_secret_arn" {
 
 output "rds_endpoint" {
   value = aws_db_instance.main.endpoint
+}
+
+output "cloudwatch_dashboard_name" {
+  value = aws_cloudwatch_dashboard.main.dashboard_name
+}
+
+output "github_deploy_role_arns" {
+  value = {
+    infra = aws_iam_role.github_infra.arn
+    be    = aws_iam_role.github_deploy["be"].arn
+    ai    = aws_iam_role.github_deploy["ai"].arn
+  }
 }
 

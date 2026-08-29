@@ -7,6 +7,11 @@ resource "aws_lb" "main" {
   idle_timeout       = 120
 }
 
+moved {
+  from = aws_lb_listener.http
+  to   = aws_lb_listener.http[0]
+}
+
 resource "aws_lb_target_group" "be" {
   name        = substr("${local.name}-be-tg", 0, 32)
   port        = 8080
@@ -26,6 +31,8 @@ resource "aws_lb_target_group" "be" {
 }
 
 resource "aws_lb_listener" "http" {
+  count = var.acm_certificate_arn == "" ? 1 : 0
+
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
@@ -36,3 +43,35 @@ resource "aws_lb_listener" "http" {
   }
 }
 
+resource "aws_lb_listener" "http_redirect" {
+  count = var.acm_certificate_arn == "" ? 0 : 1
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = 80
+  protocol          = "HTTP"
+
+  default_action {
+    type = "redirect"
+
+    redirect {
+      port        = "443"
+      protocol    = "HTTPS"
+      status_code = "HTTP_301"
+    }
+  }
+}
+
+resource "aws_lb_listener" "https" {
+  count = var.acm_certificate_arn == "" ? 0 : 1
+
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = var.acm_certificate_arn
+
+  default_action {
+    type             = "forward"
+    target_group_arn = aws_lb_target_group.be.arn
+  }
+}
