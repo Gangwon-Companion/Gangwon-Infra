@@ -8,7 +8,7 @@ locals {
   github_deploy_repositories = {
     be = {
       repository     = "Gangwon-Companion/Gangwon-Companion"
-      oidc_repository = "Gangwon-Companion@291513436/Gangwon-Companion@1261985900"
+      oidc_repository = "Gangwon-Companion/Gangwon-Companion"
       ecr_repository = aws_ecr_repository.be.arn
     }
     ai = {
