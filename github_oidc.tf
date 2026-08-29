@@ -8,10 +8,12 @@ locals {
   github_deploy_repositories = {
     be = {
       repository     = "Gangwon-Companion/Gangwon-Companion"
+      oidc_repository = "Gangwon-Companion@291513436/Gangwon-Companion@1261985900"
       ecr_repository = aws_ecr_repository.be.arn
     }
     ai = {
       repository     = "Gangwon-Companion/Gangwon-AI"
+      oidc_repository = "Gangwon-Companion@291513436/Gangwon-AI@1320145032"
       ecr_repository = aws_ecr_repository.ai.arn
     }
   }
@@ -73,7 +75,7 @@ data "aws_iam_policy_document" "github_deploy_assume_role" {
     condition {
       test     = "StringEquals"
       variable = "token.actions.githubusercontent.com:sub"
-      values   = ["repo:${each.value.repository}:environment:prod"]
+      values   = ["repo:${each.value.oidc_repository}:environment:prod"]
     }
   }
 }
