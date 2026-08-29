@@ -38,6 +38,10 @@ resource "aws_ecs_task_definition" "app" {
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
+  lifecycle {
+    create_before_destroy = true
+  }
+
   container_definitions = jsonencode([
     {
       name      = "be"
@@ -57,14 +61,16 @@ resource "aws_ecs_task_definition" "app" {
         { name = "SEARCH_ENGINE", value = "rdb" },
         { name = "AWS_REGION", value = var.aws_region },
         { name = "AWS_S3_BUCKET", value = aws_s3_bucket.community.id },
-        { name = "CAPTCHA_ENABLED", value = "false" }
+        { name = "CAPTCHA_ENABLED", value = "false" },
+        { name = "AI_SERVER_URL", value = "http://localhost:8000" },
+        { name = "CORS_ALLOWED_ORIGIN_PATTERNS", value = var.cors_allowed_origin_patterns },
+        { name = "SPRING_JPA_HIBERNATE_DDL_AUTO", value = var.spring_jpa_ddl_auto }
       ]
       secrets = [
         { name = "SPRING_DATASOURCE_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
         { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.app.arn}:JWT_SECRET::" },
         { name = "PERSONAL_DATA_ENCRYPTION_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:PERSONAL_DATA_ENCRYPTION_KEY::" },
-        { name = "TOUR_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:TOUR_API_KEY::" },
-        { name = "TATS_CNCTR_RATE_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:TATS_CNCTR_RATE_KEY::" }
+        { name = "TOUR_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:TOUR_API_KEY::" }
       ]
       healthCheck = {
         command     = ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
@@ -94,8 +100,14 @@ resource "aws_ecs_task_definition" "app" {
         protocol      = "tcp"
       }]
       environment = [
-        { name = "GANGWON_BE_BASE_URL", value = "http://localhost:8080" }
+        { name = "GANGWON_BE_BASE_URL", value = "http://localhost:8080" },
+        { name = "GANGWON_RESPONSE_LLM_ENABLED", value = tostring(var.ai_response_llm_enabled) },
+        { name = "GANGWON_RESPONSE_LLM_MODEL", value = var.ai_response_llm_model },
+        { name = "OPENAI_BASE_URL", value = var.openai_base_url }
       ]
+      secrets = var.ai_response_llm_enabled ? [
+        { name = "OPENAI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:OPENAI_API_KEY::" }
+      ] : []
       healthCheck = {
         command     = ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
         interval    = 30
@@ -139,6 +151,9 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
-  depends_on = [aws_lb_listener.http]
-}
+  depends_on = [aws_lb_listener.http, aws_lb_listener.http_redirect]
 
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
