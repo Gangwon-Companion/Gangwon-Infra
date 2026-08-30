@@ -32,10 +32,6 @@
 
 API 루트 경로 `/`는 Spring Security 보호 대상이므로 `401 UNAUTHORIZED`가 정상입니다. 서버 상태는 `/actuator/health`로 확인합니다.
 
-## 상세 문서
-
-- [시스템 아키텍처](docs/SYSTEM_ARCHITECTURE.md)
-- [AWS 비용 및 중단 운영 가이드](docs/COST_AND_SHUTDOWN.md)
 
 ## 아키텍처
 
@@ -188,10 +184,10 @@ Terraform은 인프라를 관리하고, 컨테이너 이미지 빌드와 배포�
 
 | 변경 대상 | 배포 방법 |
 | --- | --- |
-| BE 코드 | [BE 저장소](https://github.com/Gangwon-Companion/Gangwon-Companion) PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
-| AI 코드 | [AI 저장소](https://github.com/Gangwon-Companion/Gangwon-AI) PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
-| FE 코드 | [FE 저장소](https://github.com/Gangwon-Companion/Gangwon-FE)에서 Expo Go 확인 또는 EAS Build |
-| 인프라 | 이 저장소([Gangwon-Infra](https://github.com/Gangwon-Companion/Gangwon-Infra)) PR 병합 후 관리 PC에서 `terraform apply` |
+| BE 코드 | BE 저장소 PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
+| AI 코드 | AI 저장소 PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
+| FE 코드 | Expo Go 확인 또는 EAS Build |
+| 인프라 | Infra 저장소 PR 병합 후 관리 PC에서 `terraform apply` |
 
 BE와 AI는 하나의 Task Definition을 공유합니다. 각 워크플로는 현재 Task Definition을 내려받아 자신의 컨테이너 이미지만 교체합니다. 이미지 덮어쓰기를 피하기 위해 BE와 AI 배포는 순차적으로 진행합니다.
 
@@ -231,7 +227,7 @@ terraform output github_deploy_role_arns
 
 로컬 Docker는 필요하지 않습니다. BE와 AI는 AWS Fargate에서 실행됩니다.
 
-[FE 저장소](https://github.com/Gangwon-Companion/Gangwon-FE)의 `.env`에 API 주소를 설정합니다.
+FE 저장소의 `.env`에 API 주소를 설정합니다.
 
 ```dotenv
 EXPO_PUBLIC_API_URL=http://gangwon-companion-prod-alb-1949114334.ap-northeast-2.elb.amazonaws.com
@@ -259,32 +255,13 @@ aws ecs update-service --cluster gangwon-companion-prod --service gangwon-compan
 aws ecs update-service --cluster gangwon-companion-prod --service gangwon-companion-prod-app --desired-count 1 --region ap-northeast-2
 ```
 
-태스크를 0으로 내려도 ALB와 RDS 비용은 계속 발생합니다. 현재 구성에는 NAT Gateway와 ElastiCache가 없습니다.
-
-### 강제 재배포
-
-인프라 변경 후 새 Task Definition을 반영하는 방법은 [Task Definition 갱신 정책](#task-definition-갱신-정책)을 참고하세요.
+태스크를 0으로 내려도 ALB와 RDS 비용은 계속 발생합니다.
 
 ### 로그
 
 ```powershell
 aws logs tail /ecs/gangwon-companion-prod/be --since 10m --follow --region ap-northeast-2
 aws logs tail /ecs/gangwon-companion-prod/ai --since 10m --follow --region ap-northeast-2
-```
-
-### 헬스체크
-
-```powershell
-Invoke-RestMethod http://gangwon-companion-prod-alb-1949114334.ap-northeast-2.elb.amazonaws.com/actuator/health
-```
-
-정상 응답:
-
-```json
-{
-  "status": "UP",
-  "groups": ["liveness", "readiness"]
-}
 ```
 
 ## 모니터링
@@ -305,13 +282,3 @@ CloudWatch 대시보드 `gangwon-companion-prod-operations`에서 다음 항목�
 
 알람 알림을 받으려면 `alarm_action_arns`에 SNS Topic ARN을 설정합니다.
 
-## 현재 운영 상태
-
-- BE GitHub Actions 배포 성공
-- AI GitHub Actions 배포 성공
-- ECS Fargate Task 1개 실행
-- ALB Target Health `healthy`
-- RDS PostgreSQL 연결 정상
-- 외부 헬스체크 `UP`
-- 모바일 앱 Expo Go 연동 가능
-- HTTPS·EAS 정식 앱 빌드는 후속 작업
