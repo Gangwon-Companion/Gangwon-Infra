@@ -4,11 +4,12 @@
 
 강원도 여행 동행 서비스 **Gangwon Companion** 운영 인프라를 Terraform으로 관리하는 저장소입니다.
 
-모바일 사용자는 여행지·숙박·음식점 정보를 조회하고, AI 기반 여행 코스를 추천받으며, 커뮤니티 기능을 이용할 수 있습니다. AWS 위에 VPC부터 ECS Fargate, RDS, S3, CI/CD용 IAM Role까지 전부 코드로 정의합니다.
+웹 사용자는 여행지·숙박·음식점 정보를 조회하고, AI 기반 여행 코스를 추천받으며, 커뮤니티 기능을 이용할 수 있습니다. React 웹 프론트엔드는 S3와 CloudFront로 제공하고, API와 AI 서비스는 AWS ECS Fargate에서 운영합니다.
 
-- 네트워크 격리 — Public Subnet과 DB 전용 Subnet을 분리하고 RDS는 퍼블릭 접근 차단
-- 컨테이너 오케스트레이션 — ECS Fargate에서 Spring Boot BE·FastAPI AI를 한 Task로 실행
+- 네트워크 격리 — Public·Private App·DB Subnet을 분리하고 RDS는 퍼블릭 접근 차단
+- 컨테이너 오케스트레이션 — ECS Fargate에서 Spring Boot API와 FastAPI AI를 별도 Service·Task로 실행
 - 데이터 저장소 — RDS PostgreSQL(암호화, 7일 백업), 커뮤니티 이미지용 비공개 S3 Bucket
+- 웹 배포 — React SPA는 비공개 S3와 CloudFront로 배포하고 API는 동일 도메인의 `/api/*` 경로로 제공
 - 이미지 저장소 — ECR(BE·AI), 최신 10개 이미지만 유지하는 Lifecycle Policy
 - 비밀 관리 — Secrets Manager, 평문 비밀번호 없음(RDS 비밀번호는 RDS가 직접 관리)
 - CI/CD 인증 — 저장소별 GitHub Actions OIDC Role, 장기 Access Key 없음
@@ -18,41 +19,34 @@
 
 | 저장소 | 역할 |
 | --- | --- |
-| [Gangwon-FE](https://github.com/Gangwon-Companion/Gangwon-FE) | Expo 기반 Android·iOS 모바일 앱 |
+| [Gangwon-FE](https://github.com/Gangwon-Companion/Gangwon-FE) | React 기반 웹 프론트엔드 |
 | [Gangwon-Companion](https://github.com/Gangwon-Companion/Gangwon-Companion) | Spring Boot API 서버 |
 | [Gangwon-AI](https://github.com/Gangwon-Companion/Gangwon-AI) | FastAPI 기반 AI 여행 코스 추천 서버 |
 | [Gangwon-Infra](https://github.com/Gangwon-Companion/Gangwon-Infra) | Terraform 기반 AWS 인프라 (현재 저장소) |
 
 ## 실행 경로
 
-- API 주소: http://gangwon-companion-prod-alb-1949114334.ap-northeast-2.elb.amazonaws.com
-- 상태 확인: http://gangwon-companion-prod-alb-1949114334.ap-northeast-2.elb.amazonaws.com/actuator/health
+- 웹 주소: `https://<운영-웹-도메인>`
+- API 주소: `https://<운영-웹-도메인>/api`
+- 상태 확인: ALB 또는 CloudFront에 연결된 운영 health endpoint
 - AWS 리전: `ap-northeast-2` (서울)
 - CloudWatch 대시보드: `gangwon-companion-prod-operations`
 
 API 루트 경로 `/`는 Spring Security 보호 대상이므로 `401 UNAUTHORIZED`가 정상입니다. 서버 상태는 `/actuator/health`로 확인합니다.
 
-
 ## 아키텍처
 
 ```text
-Expo Mobile App
+Web Browser
        |
-       | HTTP (운영 앱 배포 전 ACM + HTTPS 적용 예정)
        v
-Application Load Balancer
-       |
-       | :8080
-       v
-ECS Fargate Service
-  └─ Task (1 vCPU, 2 GiB)
-      ├─ BE / Spring Boot :8080
-      │   ├─ RDS PostgreSQL :5432
-      │   ├─ S3 Community Bucket
-      │   └─ AI http://localhost:8000
-      │
-      └─ AI / FastAPI :8000
-          └─ BE http://localhost:8080/internal/search/places
+Route 53 -> CloudFront
+              |-> Private S3 (React/Vite dist)
+              `-> ALB (/api/*)
+                    `-> Spring Boot ECS Service :8080
+                          |-> RDS PostgreSQL :5432
+                          |-> S3 Community Bucket
+                          `-> FastAPI ECS Service :8000
 
 ECR ───────────────> BE·AI 컨테이너 이미지
 Secrets Manager ───> DB 비밀번호·JWT·암호화 키·외부 API 키
@@ -60,25 +54,35 @@ CloudWatch <──────── BE·AI 로그·ALB/ECS/RDS 지표·알람
 GitHub Actions ─────> OIDC 임시 자격 증명으로 ECR·ECS 배포
 ```
 
+### 웹 배포 구성
+
+CloudFront가 React 정적 파일은 S3에서 제공하고 `/api/*` 요청은 ALB를 통해 Spring Boot ECS Service로 전달합니다. FastAPI는 외부에 공개하지 않으며 Spring Boot와 ECS Service Connect로 통신합니다.
+
+- 웹 호스팅용 S3 Bucket은 커뮤니티 이미지 Bucket과 분리합니다.
+- CloudFront OAC, ACM, Route 53, SPA 새로고침용 오류 응답 처리를 사용합니다.
+- 웹 배포는 GitHub Actions OIDC로 S3 동기화 후 CloudFront 캐시를 무효화합니다.
+- Spring Boot와 FastAPI는 별도 ECS Service·Task Definition으로 운영하고 ECS Task는 Private App Subnet에 배치합니다.
+- 각 가용 영역에 NAT Gateway를 배치하고 S3, ECR, CloudWatch Logs, Secrets Manager VPC Endpoint를 구성합니다.
+
 ## 설계 원칙
 
 - 외부 노출은 ALB로만 한정합니다. RDS는 프라이빗 서브넷에 있고 퍼블릭 IP가 없으며, FastAPI(8000)는 어떤 보안 그룹에서도 인바운드를 열지 않습니다.
-- BE와 AI는 같은 Fargate Task 안에서 `localhost`로 통신합니다. ALB나 인터넷을 거치지 않습니다.
+- Spring Boot와 FastAPI는 ECS Service Connect의 내부 서비스 주소로 통신합니다. FastAPI는 ALB나 인터넷에 노출하지 않습니다.
 - 비밀은 Secrets Manager에만 둡니다. JWT·암호화 키·외부 API 키는 Task의 `secrets` 필드로 주입되고, RDS 비밀번호는 RDS가 직접 관리해 Git에 남지 않습니다.
-- 모바일 앱은 이 인프라가 호스팅하지 않습니다. Expo/EAS 빌드에 API 주소만 주입합니다.
+- React 웹은 이 인프라의 S3·CloudFront에서 호스팅하며, 운영 API 주소는 빌드 환경 변수로 주입합니다.
 - Task Definition과 desired count는 GitHub Actions와 운영자가 관리하며, Terraform은 `lifecycle.ignore_changes`로 되돌리지 않습니다.
 
 ## 관리 리소스
 
 | 영역 | 관리 리소스 |
 | --- | --- |
-| Network | VPC, Public Subnet 2개, DB Subnet 2개, Internet Gateway, Route Table |
+| Network | VPC, Public Subnet 2개, Private App Subnet 2개, DB Subnet 2개, NAT Gateway, VPC Endpoint, Internet Gateway |
 | Security | ALB·ECS·RDS Security Group과 최소 인바운드 규칙 |
 | ALB | Application Load Balancer, BE Target Group, HTTP Listener, 선택적 HTTPS Listener |
 | ECS | ECS Cluster, Fargate Task Definition, ECS Service, 배포 Circuit Breaker |
 | ECR | BE·AI 이미지 저장소, 최신 10개 이미지 Lifecycle Policy |
 | RDS | PostgreSQL, DB Subnet Group, 암호화 스토리지, 7일 백업 |
-| S3 | 커뮤니티 이미지용 비공개 Bucket |
+| S3 | React 웹 호스팅용 비공개 Bucket, 커뮤니티 이미지용 비공개 Bucket |
 | Secrets | RDS 관리형 비밀번호, 애플리케이션 Secrets Manager Secret |
 | IAM | ECS 실행·Task Role, GitHub Actions 배포 Role |
 | Monitoring | 서비스별 Log Group, CloudWatch Dashboard, Metric Filter, Alarm |
@@ -90,14 +94,12 @@ GitHub Actions ─────> OIDC 임시 자격 증명으로 ECR·ECS 배포
 | --- | --- |
 | 리전 | `ap-northeast-2` (서울) |
 | VPC CIDR | `10.0.0.0/16`, 가용 영역 2개(`ap-northeast-2a`, `ap-northeast-2b`) |
-| ECS | Fargate, `awsvpc`, Task 1 vCPU/2 GiB (BE 512/1 GiB + AI 512/768 MiB) |
+| ECS | Fargate, `awsvpc`, Spring Boot·FastAPI 별도 Task Definition 및 ECS Service |
 | RDS | PostgreSQL `db.t4g.micro`, gp3 20→100 GiB, Single-AZ, 비공개 접근 |
-| Task 수 | 초기값 0, 현재 운영 1 (GitHub Actions·운영자가 조정, Terraform 미간섭) |
+| Task 수 | 서비스별 기본 2개, 가용 영역별 1개 이상 |
 | 로그 보존 | CloudWatch Logs 14일 |
 | Terraform | `>= 1.10.0, < 2.0.0` |
 | AWS Provider | `>= 6.0, < 7.0` |
-
-현재는 초기 운영 비용을 고려해 Fargate 1개와 RDS Single-AZ를 사용합니다. 무중단 운영이 필요해지면 Fargate 2개 이상과 RDS Multi-AZ를 권장합니다.
 
 ## 저장소 구조
 
@@ -118,7 +120,7 @@ GitHub Actions ─────> OIDC 임시 자격 증명으로 ECR·ECS 배포
 ├── variables.tf              # 입력 변수와 검증
 ├── versions.tf               # Terraform·Provider 버전 제약
 ├── terraform.tfvars.example  # 운영 변수 예시
-├── docs/                     # 아키텍처·비용·중단 운영 가이드
+├── docs/                     # 아키텍처·웹 배포·비용·중단 운영 가이드
 └── README.md
 ```
 
@@ -186,10 +188,10 @@ Terraform은 인프라를 관리하고, 컨테이너 이미지 빌드와 배포�
 | --- | --- |
 | BE 코드 | BE 저장소 PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
 | AI 코드 | AI 저장소 PR → `main` 병합 → prod 승인 → ECR·ECS 배포 |
-| FE 코드 | Expo Go 확인 또는 EAS Build |
+| FE 코드 | React 빌드 → 웹 호스팅용 S3 동기화 → CloudFront 캐시 무효화 |
 | 인프라 | Infra 저장소 PR 병합 후 관리 PC에서 `terraform apply` |
 
-BE와 AI는 하나의 Task Definition을 공유합니다. 각 워크플로는 현재 Task Definition을 내려받아 자신의 컨테이너 이미지만 교체합니다. 이미지 덮어쓰기를 피하기 위해 BE와 AI 배포는 순차적으로 진행합니다.
+BE와 AI는 별도 Task Definition과 ECS Service로 배포합니다. BE는 ALB를 통해 외부 API를 제공하고, AI는 Service Connect를 통해서만 접근합니다. 웹 프론트엔드는 컨테이너가 아닌 S3·CloudFront로 배포합니다.
 
 ### Task Definition 갱신 정책
 
@@ -223,25 +225,25 @@ terraform output github_deploy_role_arns
 
 배포 가능 브랜치 제한이 필요합니다. Trust Policy의 `sub` 조건은 Environment만 구분하고 브랜치는 구분하지 않습니다. 각 저장소 `prod` Environment에서 배포 가능 브랜치를 `main`으로 제한해야 실질적인 방어가 됩니다. Required reviewer가 설정된 경우 팀원 승인 후 배포됩니다.
 
-## 모바일 앱 확인
+## 웹 배포 및 확인
 
-로컬 Docker는 필요하지 않습니다. BE와 AI는 AWS Fargate에서 실행됩니다.
+React 웹은 GitHub Actions에서 빌드한 뒤 웹 호스팅용 S3에 업로드하고 CloudFront 캐시를 무효화합니다. 장기 AWS Access Key 대신 GitHub Actions OIDC Role을 사용합니다.
 
-FE 저장소의 `.env`에 API 주소를 설정합니다.
+빌드 시 운영 API 주소를 환경 변수로 주입합니다.
 
-```dotenv
-EXPO_PUBLIC_API_URL=http://gangwon-companion-prod-alb-1949114334.ap-northeast-2.elb.amazonaws.com
+```text
+API_BASE_URL=https://<운영-웹-도메인>/api
 ```
 
 ```powershell
 cd ..\Gangwon-FE
 npm install
-npm run start -- --tunnel
+npm run build
 ```
 
-휴대폰의 Expo Go에서 QR 코드를 스캔하면 앱 화면은 개발 PC에서 받고 API 요청은 AWS로 전달합니다.
+생성된 `dist` 디렉터리를 S3에 동기화한 후 CloudFront 캐시를 무효화합니다. 운영 URL에서 SPA 최초 진입, 새로고침, 로그인, API 호출, 이미지 업로드를 확인합니다.
 
-정식 Android·iOS 배포 전에는 사용자 도메인과 ACM 인증서를 연결해 HTTPS를 적용하고 EAS Build로 APK/AAB 또는 iOS 빌드를 생성해야 합니다.
+웹 도메인은 ACM 인증서와 Route 53에 연결하고, CloudFront에서 HTTPS를 강제합니다. API를 별도 도메인으로 운영할 경우 백엔드 CORS 허용 목록에 운영 웹 도메인만 등록합니다.
 
 ## 운영
 
@@ -255,7 +257,11 @@ aws ecs update-service --cluster gangwon-companion-prod --service gangwon-compan
 aws ecs update-service --cluster gangwon-companion-prod --service gangwon-companion-prod-app --desired-count 1 --region ap-northeast-2
 ```
 
-태스크를 0으로 내려도 ALB와 RDS 비용은 계속 발생합니다.
+태스크를 0으로 내려도 ALB, NAT Gateway, RDS 비용은 계속 발생합니다. ElastiCache는 사용하지 않습니다.
+
+### 강제 재배포
+
+인프라 변경 후 새 Task Definition을 반영하는 방법은 [Task Definition 갱신 정책](#task-definition-갱신-정책)을 참고하세요.
 
 ### 로그
 
@@ -281,4 +287,3 @@ CloudWatch 대시보드 `gangwon-companion-prod-operations`에서 다음 항목�
 - BE·AI ERROR 로그 5분 동안 5건 이상
 
 알람 알림을 받으려면 `alarm_action_arns`에 SNS Topic ARN을 설정합니다.
-
