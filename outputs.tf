@@ -15,6 +15,18 @@ output "community_bucket_name" {
   value = aws_s3_bucket.community.id
 }
 
+output "web_bucket_name" {
+  value = aws_s3_bucket.web.id
+}
+
+output "cloudfront_domain_name" {
+  value = aws_cloudfront_distribution.web.domain_name
+}
+
+output "cloudfront_distribution_id" {
+  value = aws_cloudfront_distribution.web.id
+}
+
 output "application_secret_arn" {
   value = aws_secretsmanager_secret.app.arn
 }
@@ -32,6 +44,7 @@ output "github_deploy_role_arns" {
     infra = aws_iam_role.github_infra.arn
     be    = aws_iam_role.github_deploy["be"].arn
     ai    = aws_iam_role.github_deploy["ai"].arn
+    fe    = aws_iam_role.github_fe_deploy.arn
   }
 }
 

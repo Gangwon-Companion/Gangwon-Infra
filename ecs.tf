@@ -140,9 +140,9 @@ resource "aws_ecs_service" "app" {
   }
 
   network_configuration {
-    subnets          = aws_subnet.public[*].id
+    subnets          = aws_subnet.private_app[*].id
     security_groups  = [aws_security_group.ecs.id]
-    assign_public_ip = true
+    assign_public_ip = false
   }
 
   load_balancer {
@@ -151,7 +151,7 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
-  depends_on = [aws_lb_listener.http, aws_lb_listener.http_redirect]
+  depends_on = [aws_lb_listener.http, aws_lb_listener.http_redirect, aws_nat_gateway.main]
 
   lifecycle {
     ignore_changes = [task_definition, desired_count]

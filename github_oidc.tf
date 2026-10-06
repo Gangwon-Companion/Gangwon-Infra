@@ -7,16 +7,18 @@ resource "aws_iam_openid_connect_provider" "github" {
 locals {
   github_deploy_repositories = {
     be = {
-      repository     = "Gangwon-Companion/Gangwon-Companion"
+      repository      = "Gangwon-Companion/Gangwon-Companion"
       oidc_repository = "Gangwon-Companion/Gangwon-Companion"
-      ecr_repository = aws_ecr_repository.be.arn
+      ecr_repository  = aws_ecr_repository.be.arn
     }
     ai = {
-      repository     = "Gangwon-Companion/Gangwon-AI"
+      repository      = "Gangwon-Companion/Gangwon-AI"
       oidc_repository = "Gangwon-Companion@291513436/Gangwon-AI@1320145032"
-      ecr_repository = aws_ecr_repository.ai.arn
+      ecr_repository  = aws_ecr_repository.ai.arn
     }
   }
+
+  github_fe_repository = "Gangwon-Companion/Gangwon-FE"
 }
 
 data "aws_iam_policy_document" "github_infra_assume_role" {
@@ -138,6 +140,66 @@ resource "aws_iam_role_policy" "github_deploy" {
             "iam:PassedToService" = "ecs-tasks.amazonaws.com"
           }
         }
+      }
+    ]
+  })
+}
+
+data "aws_iam_policy_document" "github_fe_assume_role" {
+  statement {
+    actions = ["sts:AssumeRoleWithWebIdentity"]
+    effect  = "Allow"
+
+    principals {
+      type        = "Federated"
+      identifiers = [aws_iam_openid_connect_provider.github.arn]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:aud"
+      values   = ["sts.amazonaws.com"]
+    }
+
+    condition {
+      test     = "StringEquals"
+      variable = "token.actions.githubusercontent.com:sub"
+      values   = ["repo:${local.github_fe_repository}:environment:prod"]
+    }
+  }
+}
+
+resource "aws_iam_role" "github_fe_deploy" {
+  name                 = "${local.name}-github-fe-deploy"
+  assume_role_policy   = data.aws_iam_policy_document.github_fe_assume_role.json
+  max_session_duration = 3600
+}
+
+resource "aws_iam_role_policy" "github_fe_deploy" {
+  name = "${local.name}-fe-deploy"
+  role = aws_iam_role.github_fe_deploy.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Effect   = "Allow"
+        Action   = ["s3:ListBucket"]
+        Resource = aws_s3_bucket.web.arn
+      },
+      {
+        Effect = "Allow"
+        Action = [
+          "s3:PutObject",
+          "s3:GetObject",
+          "s3:DeleteObject"
+        ]
+        Resource = "${aws_s3_bucket.web.arn}/*"
+      },
+      {
+        Effect   = "Allow"
+        Action   = ["cloudfront:CreateInvalidation"]
+        Resource = aws_cloudfront_distribution.web.arn
       }
     ]
   })

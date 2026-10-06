@@ -52,6 +52,29 @@ resource "aws_security_group" "ecs" {
   tags = { Name = "${local.name}-ecs-sg" }
 }
 
+resource "aws_security_group" "vpc_endpoints" {
+  name        = "${local.name}-vpce-sg"
+  description = "Allow HTTPS from ECS tasks to interface VPC endpoints"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "HTTPS from ECS"
+    from_port       = 443
+    to_port         = 443
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name}-vpce-sg" }
+}
+
 resource "aws_security_group" "rds" {
   name        = "${local.name}-rds-sg"
   description = "Allow PostgreSQL only from ECS tasks"
