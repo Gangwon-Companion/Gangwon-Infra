@@ -108,7 +108,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_cpu" {
 
   dimensions = {
     ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.app.name
+    ServiceName = aws_ecs_service.be.name
   }
 }
 
@@ -129,7 +129,7 @@ resource "aws_cloudwatch_metric_alarm" "ecs_memory" {
 
   dimensions = {
     ClusterName = aws_ecs_cluster.main.name
-    ServiceName = aws_ecs_service.app.name
+    ServiceName = aws_ecs_service.be.name
   }
 }
 
@@ -238,7 +238,7 @@ resource "aws_cloudwatch_dashboard" "main" {
           region = var.aws_region
           view   = "timeSeries"
           metrics = [
-            ["AWS/ECS", "CPUUtilization", "ClusterName", aws_ecs_cluster.main.name, "ServiceName", aws_ecs_service.app.name],
+            ["AWS/ECS", "CPUUtilization", "ClusterName", aws_ecs_cluster.main.name, "ServiceName", aws_ecs_service.be.name],
             [".", "MemoryUtilization", ".", ".", ".", "."]
           ]
         }

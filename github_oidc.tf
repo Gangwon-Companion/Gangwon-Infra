@@ -127,9 +127,12 @@ resource "aws_iam_role_policy" "github_deploy" {
         Resource = "*"
       },
       {
-        Effect   = "Allow"
-        Action   = ["ecs:UpdateService"]
-        Resource = aws_ecs_service.app.id
+        Effect = "Allow"
+        Action = ["ecs:UpdateService"]
+        Resource = [
+          aws_ecs_service.be.id,
+          aws_ecs_service.ai.id
+        ]
       },
       {
         Effect   = "Allow"

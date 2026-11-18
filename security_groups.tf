@@ -52,6 +52,38 @@ resource "aws_security_group" "ecs" {
   tags = { Name = "${local.name}-ecs-sg" }
 }
 
+resource "aws_security_group" "ecs_ai" {
+  name        = "${local.name}-ecs-ai-sg"
+  description = "Allow FastAPI traffic only from the Spring Boot service"
+  vpc_id      = aws_vpc.main.id
+
+  ingress {
+    description     = "FastAPI from Spring Boot"
+    from_port       = 8000
+    to_port         = 8000
+    protocol        = "tcp"
+    security_groups = [aws_security_group.ecs.id]
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = { Name = "${local.name}-ecs-ai-sg" }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "be_from_ai" {
+  security_group_id            = aws_security_group.ecs.id
+  referenced_security_group_id = aws_security_group.ecs_ai.id
+  from_port                    = 8080
+  to_port                      = 8080
+  ip_protocol                  = "tcp"
+  description                  = "BE internal API from FastAPI"
+}
+
 resource "aws_security_group" "vpc_endpoints" {
   name        = "${local.name}-vpce-sg"
   description = "Allow HTTPS from ECS tasks to interface VPC endpoints"
@@ -62,7 +94,7 @@ resource "aws_security_group" "vpc_endpoints" {
     from_port       = 443
     to_port         = 443
     protocol        = "tcp"
-    security_groups = [aws_security_group.ecs.id]
+    security_groups = [aws_security_group.ecs.id, aws_security_group.ecs_ai.id]
   }
 
   egress {

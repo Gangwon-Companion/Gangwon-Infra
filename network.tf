@@ -152,3 +152,9 @@ resource "aws_vpc_endpoint" "secretsmanager" {
 
   tags = { Name = "${local.name}-secretsmanager-endpoint" }
 }
+
+resource "aws_service_discovery_private_dns_namespace" "main" {
+  name        = "${local.name}.local"
+  description = "Private namespace for ECS Service Connect"
+  vpc         = aws_vpc.main.id
+}

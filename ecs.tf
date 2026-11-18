@@ -29,108 +29,115 @@ resource "aws_ecs_cluster" "main" {
   name = local.name
 }
 
-resource "aws_ecs_task_definition" "app" {
-  family                   = "${local.name}-app"
+resource "aws_ecs_task_definition" "be" {
+  family                   = "${local.name}-be"
   network_mode             = "awsvpc"
   requires_compatibilities = ["FARGATE"]
-  cpu                      = "1024"
-  memory                   = "2048"
+  cpu                      = "512"
+  memory                   = "1024"
   execution_role_arn       = aws_iam_role.ecs_execution.arn
   task_role_arn            = aws_iam_role.ecs_task.arn
 
-  lifecycle {
-    create_before_destroy = true
-  }
-
-  container_definitions = jsonencode([
-    {
-      name      = "be"
-      image     = "${aws_ecr_repository.be.repository_url}:${var.be_image_tag}"
-      essential = true
-      cpu       = 512
-      memory    = 1024
-      portMappings = [{
-        containerPort = 8080
-        hostPort      = 8080
-        protocol      = "tcp"
-      }]
-      environment = [
-        { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
-        { name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.main.address}:5432/${var.db_name}" },
-        { name = "SPRING_DATASOURCE_USERNAME", value = var.db_username },
-        { name = "SEARCH_ENGINE", value = "rdb" },
-        { name = "AWS_REGION", value = var.aws_region },
-        { name = "AWS_S3_BUCKET", value = aws_s3_bucket.community.id },
-        { name = "CAPTCHA_ENABLED", value = "false" },
-        { name = "AI_SERVER_URL", value = "http://localhost:8000" },
-        { name = "CORS_ALLOWED_ORIGIN_PATTERNS", value = var.cors_allowed_origin_patterns },
-        { name = "SPRING_JPA_HIBERNATE_DDL_AUTO", value = var.spring_jpa_ddl_auto }
-      ]
-      secrets = [
-        { name = "SPRING_DATASOURCE_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
-        { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.app.arn}:JWT_SECRET::" },
-        { name = "PERSONAL_DATA_ENCRYPTION_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:PERSONAL_DATA_ENCRYPTION_KEY::" },
-        { name = "TOUR_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:TOUR_API_KEY::" }
-      ]
-      healthCheck = {
-        command     = ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 60
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.be.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
-      }
-    },
-    {
-      name      = "ai"
-      image     = "${aws_ecr_repository.ai.repository_url}:${var.ai_image_tag}"
-      essential = true
-      cpu       = 512
-      memory    = 768
-      portMappings = [{
-        containerPort = 8000
-        hostPort      = 8000
-        protocol      = "tcp"
-      }]
-      environment = [
-        { name = "GANGWON_BE_BASE_URL", value = "http://localhost:8080" },
-        { name = "GANGWON_RESPONSE_LLM_ENABLED", value = tostring(var.ai_response_llm_enabled) },
-        { name = "GANGWON_RESPONSE_LLM_MODEL", value = var.ai_response_llm_model },
-        { name = "OPENAI_BASE_URL", value = var.openai_base_url }
-      ]
-      secrets = var.ai_response_llm_enabled ? [
-        { name = "OPENAI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:OPENAI_API_KEY::" }
-      ] : []
-      healthCheck = {
-        command     = ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
-        interval    = 30
-        timeout     = 5
-        retries     = 3
-        startPeriod = 15
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.ai.name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "ecs"
-        }
+  container_definitions = jsonencode([{
+    name      = "be"
+    image     = "${aws_ecr_repository.be.repository_url}:${var.be_image_tag}"
+    essential = true
+    cpu       = 512
+    memory    = 1024
+    portMappings = [{
+      name          = "be"
+      containerPort = 8080
+      hostPort      = 8080
+      protocol      = "tcp"
+    }]
+    environment = [
+      { name = "SPRING_PROFILES_ACTIVE", value = "prod" },
+      { name = "SPRING_DATASOURCE_URL", value = "jdbc:postgresql://${aws_db_instance.main.address}:5432/${var.db_name}" },
+      { name = "SPRING_DATASOURCE_USERNAME", value = var.db_username },
+      { name = "SEARCH_ENGINE", value = "rdb" },
+      { name = "AWS_REGION", value = var.aws_region },
+      { name = "AWS_S3_BUCKET", value = aws_s3_bucket.community.id },
+      { name = "CAPTCHA_ENABLED", value = "false" },
+      { name = "AI_SERVER_URL", value = "http://ai:8000" },
+      { name = "CORS_ALLOWED_ORIGIN_PATTERNS", value = var.cors_allowed_origin_patterns },
+      { name = "SPRING_JPA_HIBERNATE_DDL_AUTO", value = var.spring_jpa_ddl_auto }
+    ]
+    secrets = [
+      { name = "SPRING_DATASOURCE_PASSWORD", valueFrom = "${aws_db_instance.main.master_user_secret[0].secret_arn}:password::" },
+      { name = "JWT_SECRET", valueFrom = "${aws_secretsmanager_secret.app.arn}:JWT_SECRET::" },
+      { name = "PERSONAL_DATA_ENCRYPTION_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:PERSONAL_DATA_ENCRYPTION_KEY::" },
+      { name = "TOUR_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:TOUR_API_KEY::" }
+    ]
+    healthCheck = {
+      command     = ["CMD-SHELL", "wget -q -O /dev/null http://localhost:8080/actuator/health || exit 1"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 60
+    }
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.be.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "ecs"
       }
     }
-  ])
+  }])
 }
 
-resource "aws_ecs_service" "app" {
-  name            = "${local.name}-app"
+resource "aws_ecs_task_definition" "ai" {
+  family                   = "${local.name}-ai"
+  network_mode             = "awsvpc"
+  requires_compatibilities = ["FARGATE"]
+  cpu                      = "512"
+  memory                   = "768"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([{
+    name      = "ai"
+    image     = "${aws_ecr_repository.ai.repository_url}:${var.ai_image_tag}"
+    essential = true
+    cpu       = 512
+    memory    = 768
+    portMappings = [{
+      name          = "ai"
+      containerPort = 8000
+      hostPort      = 8000
+      protocol      = "tcp"
+    }]
+    environment = [
+      { name = "GANGWON_BE_BASE_URL", value = "http://backend:8080" },
+      { name = "GANGWON_RESPONSE_LLM_ENABLED", value = tostring(var.ai_response_llm_enabled) },
+      { name = "GANGWON_RESPONSE_LLM_MODEL", value = var.ai_response_llm_model },
+      { name = "OPENAI_BASE_URL", value = var.openai_base_url }
+    ]
+    secrets = var.ai_response_llm_enabled ? [
+      { name = "OPENAI_API_KEY", valueFrom = "${aws_secretsmanager_secret.app.arn}:OPENAI_API_KEY::" }
+    ] : []
+    healthCheck = {
+      command     = ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health', timeout=3)"]
+      interval    = 30
+      timeout     = 5
+      retries     = 3
+      startPeriod = 15
+    }
+    logConfiguration = {
+      logDriver = "awslogs"
+      options = {
+        awslogs-group         = aws_cloudwatch_log_group.ai.name
+        awslogs-region        = var.aws_region
+        awslogs-stream-prefix = "ecs"
+      }
+    }
+  }])
+}
+
+resource "aws_ecs_service" "be" {
+  name            = "${local.name}-be"
   cluster         = aws_ecs_cluster.main.id
-  task_definition = aws_ecs_task_definition.app.arn
+  task_definition = aws_ecs_task_definition.be.arn
   desired_count   = var.ecs_desired_count
   launch_type     = "FARGATE"
 
@@ -151,7 +158,62 @@ resource "aws_ecs_service" "app" {
     container_port   = 8080
   }
 
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_private_dns_namespace.main.arn
+
+    service {
+      port_name      = "be"
+      discovery_name = "backend"
+
+      client_alias {
+        port     = 8080
+        dns_name = "backend"
+      }
+    }
+  }
+
   depends_on = [aws_lb_listener.http, aws_lb_listener.http_redirect, aws_nat_gateway.main]
+
+  lifecycle {
+    ignore_changes = [task_definition, desired_count]
+  }
+}
+
+resource "aws_ecs_service" "ai" {
+  name            = "${local.name}-ai"
+  cluster         = aws_ecs_cluster.main.id
+  task_definition = aws_ecs_task_definition.ai.arn
+  desired_count   = var.ecs_desired_count
+  launch_type     = "FARGATE"
+
+  deployment_circuit_breaker {
+    enable   = true
+    rollback = true
+  }
+
+  network_configuration {
+    subnets          = aws_subnet.private_app[*].id
+    security_groups  = [aws_security_group.ecs_ai.id]
+    assign_public_ip = false
+  }
+
+  service_connect_configuration {
+    enabled   = true
+    namespace = aws_service_discovery_private_dns_namespace.main.arn
+
+    service {
+      port_name      = "ai"
+      discovery_name = "ai"
+
+      client_alias {
+        port     = 8000
+        dns_name = "ai"
+      }
+    }
+  }
+
+  depends_on = [aws_ecs_service.be]
 
   lifecycle {
     ignore_changes = [task_definition, desired_count]

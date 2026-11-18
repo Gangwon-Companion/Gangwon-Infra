@@ -47,9 +47,9 @@ variable "ai_image_tag" {
 }
 
 variable "ecs_desired_count" {
-  description = "Keep at zero until both images and the application secret value exist."
+  description = "Task count per ECS service. Two tasks place one replica in each availability zone."
   type        = number
-  default     = 0
+  default     = 2
 
   validation {
     condition     = var.ecs_desired_count >= 0 && var.ecs_desired_count <= 2
